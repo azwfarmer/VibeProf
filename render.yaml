@@ -1,0 +1,34 @@
+# Render Blueprint for the AI Tutor backend (apps/backend).
+# The frontend stays on Vercel; this hosts the long-running Node API server.
+# Deploy: push this file, then in Render -> "New +" -> "Blueprint" -> pick this repo.
+services:
+  - type: web
+    name: aitutor-backend
+    runtime: node
+    region: oregon
+    branch: main
+    plan: starter # a paid plan is required for the persistent disk below
+    # --include=dev because Render builds with NODE_ENV=production, which would
+    # otherwise skip typescript/@types and break the `tsc` build.
+    buildCommand: npm ci --include=dev && npm run build:backend
+    startCommand: npm run start --workspace apps/backend
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      # Persists the JSON store across restarts/deploys.
+      name: aitutor-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Absolute path -> lands on the persistent disk above.
+      - key: AITUTOR_DB_PATH
+        value: /var/data/aitutor.json
+      # Secrets: set these in the Render dashboard (sync: false keeps them out of git).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

@@ -6,6 +6,7 @@ dist-test/
 *.tsbuildinfo
 apps/backend/data/
 apps/backend/**/data/
+.claude/
 
 .DS_Store
 *.log
