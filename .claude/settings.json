@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --prefix apps/backend run test)",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}

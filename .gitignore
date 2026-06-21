@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-test/
+.vite/
+.vite-temp/
+*.tsbuildinfo
+apps/backend/data/
+apps/backend/**/data/
+
+.DS_Store
+*.log
+
+.env
+.env.*
+!.env.example

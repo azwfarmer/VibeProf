@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist-test",
+    "rootDir": "src",
+    "declaration": false,
+    "composite": false
+  },
+  "include": ["src/lib/aiDrawing.ts"],
+  "references": []
+}
