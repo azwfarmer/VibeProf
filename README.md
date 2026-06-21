@@ -10,14 +10,11 @@ We couldn't find a "vibecode"-style, real-time tutor that does what a good human
 
 ## What it does
 
-- **Natural handwriting canvas** — pen, highlighter, and eraser with pressure, an Apple-Pencil-only input mode, multi-page notebooks, pan/zoom, undo, autosave, and JSON export.
-- **Two ways to get help:**
-  - **Check** — sends a snapshot of *your* work (AI marks stripped out) to a vision model for Socratic feedback plus on-canvas annotations.
-  - **Voice (Live)** — a low-latency, interruptible spoken tutor (OpenAI Realtime over WebRTC, with a Gemini Live fallback) that explains while it draws.
-- **The tutor draws** — it issues structured canvas commands: `circle_region`, `underline`, `draw_arrow`, `highlight_box`, `write_label`, and `write_formula` (LaTeX auto-normalized to clean Unicode like `πr²` and `√`).
-- **Marks mistakes in red** — a circle on the exact step with a 2–4 word note ("sign error", "missing unit") synced to what it's saying.
-- **Knows its own marks** — AI strokes are tracked separately from yours, so it can erase or rewrite *only its own* annotations (`erase_ai_region`, `replace_ai_text`, `clear_ai_annotations`) and never touches your handwriting.
-- **Spatially & temporally aware** — uses a free-space map and a stroke timeline (order, duration, position) to place new writing in open space, avoid overlapping you, and build on hints it already wrote instead of repeating them.
+VibeProf is a handwriting-first workspace for homework that works alongside you to solve math and physics problems. You write on a natural pen-and-paper canvas, and an AI tutor watches your work and helps directly on the page instead of in a separate chat box. 
+
+You can ask for help two ways: a one-shot **Check** that looks at your handwritten work and responds with feedback and annotations, or a live **Voice** mode that talks you through a problem in real time while it draws.
+
+Rather than handing back a wall of text, the tutor marks up the canvas itself — underlining a mistake, sketching an arrow, or writing out the next line of a derivation in clean, readable math. It places its writing in the open space around your work and builds on the hints it has already given, so the page ends up reading like something a human tutor sat down and worked through with you.
 
 ## How we built it
 
@@ -36,28 +33,22 @@ We couldn't find a "vibecode"-style, real-time tutor that does what a good human
 - **iPad reality.** Microphone + WebRTC on a LAN IP demand HTTPS, so we had to ship local certificate generation and trust as a first-class setup step.
 
 ## Accomplishments that we're proud of
-
-- A tutor that **circles your mistake in red and writes the fix in the margin** in real time — the thing we couldn't find anywhere else.
-- A clean command-based drawing protocol shared across text and voice, so the AI's marks are always validated, bounded, and undoable.
-- Genuinely usable on an iPad with Apple Pencil, voice, and live ink — not just a desktop demo.
+- A tutor that **underlines your mistake in red and tells you the fix** in real time — the thing we couldn't find anywhere else.
+- Genuinely usable and real-time on an iPad with Apple Pencil, voice, and live ink — not just a desktop demo.
 - Resilient multi-provider fallback so a single down API doesn't kill the session.
 
 ## What we learned
-
 - For an AI that shares a canvas with a human, **spatial and temporal context matters as much as the prompt** — *where* and *when* something was written changes the right response.
 - Latency is a teaching feature: small, early, incremental marks beat one big correct-but-late answer.
 - Constraining the model to a typed command vocabulary (instead of free-form output) made its behavior far more reliable and safe to render.
 
 ## What's next for VibeProf
-
-- Smarter layout so tutor writing never overlaps and circling/underlining feel crisper.
-- Persistent tutor memory of its own progress across a session and across pages.
 - Better matrix/LaTeX rendering, image paste + resizing, and richer text.
 - Redo, plus disabling **Check** until the previous response finishes.
-- Letting the student erase tutor writing directly, and resetting tutor state on new pages/notebooks.
+- Support for images and document upload
 
 
-## Local Usage: iPad HTTPS Setup
+## Local Development: iPad HTTPS Setup
 
 The iPad reaches the app over your local Wi‑Fi, and the mic + live voice tutor
 require HTTPS. This guide covers the full certificate process: finding your IP,
