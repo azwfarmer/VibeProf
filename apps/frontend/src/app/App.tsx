@@ -308,7 +308,10 @@ export function App() {
   useEffect(() => () => cancelAiAnimation(), []);
 
   const undoStroke = () => {
-    changeStrokes(activePage.strokes.slice(0, -1));
+    // Delegate to the canvas so undo acts on what is actually on screen (including strokes the
+    // student just drew that are still pending a debounced sync) and removes the last user stroke
+    // rather than the trailing AI annotation.
+    canvasRef.current?.undoLastUserStroke();
   };
 
   const clearInk = () => {

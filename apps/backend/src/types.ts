@@ -89,6 +89,12 @@ export type AiDrawingCommand =
       label?: string;
     }
   | {
+      type: "circle_stroke";
+      sequence: number;
+      color?: string;
+      label?: string;
+    }
+  | {
       type: "highlight_box";
       x: number;
       y: number;

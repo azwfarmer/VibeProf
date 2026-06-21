@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import type { Stroke, StrokePoint, Tool } from "../../features/notes/types";
 import { createId } from "../../lib/ids";
+import { latexToUnicode } from "../../lib/latex";
 
 type DrawingCanvasProps = {
   pageId: string;
@@ -14,6 +15,7 @@ type DrawingCanvasProps = {
 
 export type DrawingCanvasHandle = {
   exportSnapshot: (options?: { includeAi?: boolean; format?: "png" | "jpeg"; maxWidth?: number; quality?: number }) => string | null;
+  undoLastUserStroke: () => void;
 };
 
 const canvasWidth = 1600;
@@ -109,7 +111,9 @@ const drawHandwrittenText = (context: CanvasRenderingContext2D, stroke: Stroke) 
   }
 
   const size = stroke.fontSize ?? (stroke.textKind === "formula" ? 52 : 38);
-  const lines = stroke.text.split(/\n/).slice(0, 4);
+  // Formula text arrives as LaTeX; convert control sequences to Unicode before drawing so
+  // "\lambda" renders as "λ" rather than being painted literally.
+  const lines = latexToUnicode(stroke.text).split(/\n/).slice(0, 4);
 
   context.save();
   context.translate(stroke.x, stroke.y);
@@ -252,6 +256,39 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       }
 
       return canvas.toDataURL(options?.format === "jpeg" ? "image/jpeg" : "image/png", options?.quality ?? 0.9);
+    },
+    undoLastUserStroke: () => {
+      // Operate on the live, on-screen strokes (strokesRef holds the parent's strokes plus any
+      // locally-drawn strokes still pending a debounced sync). Using the parent's stroke prop here
+      // would miss a stroke the student just drew and instead clip the trailing AI annotation,
+      // which mergeAiStrokes always appends after the user's strokes.
+      const current = strokesRef.current;
+      let removeIndex = -1;
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        if (current[index].source !== "ai") {
+          removeIndex = index;
+          break;
+        }
+      }
+
+      if (removeIndex === -1) {
+        return;
+      }
+
+      // Drop it from the pending set too, so the strokes effect can't resurrect it on the next
+      // prop echo from the parent.
+      pendingUserStrokesRef.current.delete(current[removeIndex].id);
+      const next = current.filter((_, index) => index !== removeIndex);
+      strokesRef.current = next;
+      redrawCanvas(next);
+
+      // Flush immediately rather than waiting for the debounce, so the parent state reflects the
+      // undo right away.
+      if (syncTimeoutRef.current) {
+        window.clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
+      }
+      onChange(next);
     }
   }));
 
@@ -303,6 +340,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   useEffect(() => {
     // A new page is a clean slate; never carry another page's unsynced strokes across.
     pendingUserStrokesRef.current.clear();
+    // Cancel any debounced sync still queued for the previous page. strokesRef now holds the new
+    // page's strokes, so letting the old timer fire would write this page's content back into the
+    // page we just left.
+    if (syncTimeoutRef.current) {
+      window.clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+    }
   }, [pageId]);
 
   useEffect(() => {
@@ -695,7 +739,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       canvas.removeEventListener("touchend", preventTouchGestures);
       canvas.removeEventListener("touchcancel", preventTouchGestures);
     };
-  }, [color, inputMode, size, tool]);
+    // pageId is a dependency so the handlers (and the onChange/commit closures they capture) rebind
+    // when the active page changes; otherwise strokes drawn after a page switch are synced back to
+    // the previously active page.
+  }, [color, inputMode, size, tool, pageId]);
 
   return (
     <div className="canvas-shell" style={{ "--cursor-size": `${cursorSize}px` } as React.CSSProperties}>

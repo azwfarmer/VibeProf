@@ -102,9 +102,10 @@ The CA is **reused** across runs, so devices that already trust it stay trusted.
 Use `./scripts/make-certs.sh --new-ca` only to start fresh (every device must
 then re-trust).
 
-### 3. Start the backend (Mac)
+### 3. Start the backend and frontend (Mac)
 
 ```bash
+npm install
 npm run dev:backend
 ```
 
@@ -115,6 +116,11 @@ Two listeners come up:
 
 HTTPS only activates when `HTTPS_CERT_PATH`, `HTTPS_KEY_PATH`, and
 `HTTPS_CA_CERT_PATH` are set in `.env` (they point at the files from step 2).
+
+In a separate terminal, start the frontend.
+```bash
+npm run dev:frontend
+```
 
 ### 4. Download the CA cert (iPad → Safari)
 

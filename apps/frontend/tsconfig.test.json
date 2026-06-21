@@ -7,6 +7,6 @@
     "declaration": false,
     "composite": false
   },
-  "include": ["src/lib/aiDrawing.ts"],
+  "include": ["src/lib/aiDrawing.ts", "src/lib/latex.ts"],
   "references": []
 }

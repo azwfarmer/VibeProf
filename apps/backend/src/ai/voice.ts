@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import { config } from "../config.js";
-import { commandsToStrokes, validateCommands } from "./drawingCommands.js";
+import { commandsToStrokes, resolveStrokeReferences, validateCommands } from "./drawingCommands.js";
 import type { AiDrawingCommand, ProviderName } from "../types.js";
 
 const supportedOpenAiVoices = new Set(["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]);
@@ -362,7 +362,9 @@ export const applyRealtimeCanvasCommands = (commands: unknown): {
   commands: AiDrawingCommand[];
   aiStrokes: ReturnType<typeof commandsToStrokes>;
 } => {
-  const validated = validateCommands(commands);
+  // The realtime path has no stroke timeline, so circle_stroke references cannot be grounded and
+  // are dropped rather than echoed back as no-op commands.
+  const validated = resolveStrokeReferences(validateCommands(commands), []);
   return {
     commands: validated,
     aiStrokes: commandsToStrokes(validated)

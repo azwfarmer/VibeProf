@@ -1,4 +1,5 @@
 import type { AiDrawingCommand, Stroke, StrokePoint } from "../features/notes/types";
+import { latexToUnicode } from "./latex.js";
 
 export const removeAiStrokes = (strokes: Stroke[]) => strokes.filter((stroke) => stroke.source !== "ai");
 
@@ -48,7 +49,8 @@ export const getStrokeBounds = (stroke: Stroke): StrokeBounds | null => {
   }
 
   const fontSize = stroke.fontSize ?? (stroke.textKind === "formula" ? 52 : 38);
-  const lines = stroke.text.split(/\n/).slice(0, 4);
+  // Measure the rendered (Unicode) text, not the raw LaTeX, so bounds match what is drawn.
+  const lines = latexToUnicode(stroke.text).split(/\n/).slice(0, 4);
   const width = Math.max(...lines.map((line) => line.length), 1) * fontSize * 0.62;
   const height = Math.max(lines.length, 1) * fontSize * 1.18;
 

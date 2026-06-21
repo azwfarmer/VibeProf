@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { selectTutorModel } from "./modelRegistry.js";
-import { validateCommands } from "./drawingCommands.js";
+import { validateCommands, resolveStrokeReferences } from "./drawingCommands.js";
 import type { ProviderName, Stroke, TutorMessageRequest, TutorResponse } from "../types.js";
 
 const systemPrompt = `You are a concise Socratic tutor looking at a student's handwritten notes.
@@ -15,24 +15,24 @@ If the user asks you to edit a specific character or substring in your own writt
 Current AI annotation metadata, when present, describes your previous marks only. Use it for targeted erasing, not as student work.
 The "Hints already written on the canvas" list and the Current AI annotations are your memory of what you have already drawn. The snapshot you see has your own marks removed, so this text is the ONLY record of your prior hints. Read it before answering: build on those hints, never repeat or restate one that is already written there, and advance to the next step or a more specific hint. When the student asks for "another hint", "more", or "the next step", give one that goes beyond everything already on the canvas.
 Before adding a new write_label or write_formula command, pick coordinates inside one of the Free space map open zones (anchor near a listed center) and clear of BOTH the student's strokes and your prior AI annotation bounds. Never write on top of the student's handwriting. Leave at least 40px from your own prior writing and at least 30px from any student stroke bounds; if no open zone fits, write below the lowest student strokes.
-The temporal stroke timeline is ordered oldest to newest and describes student thought process: where strokes were written, how long they took, and which strokes are still visible.
+The temporal stroke timeline is ordered oldest to newest and describes student thought process: where strokes were written, how long they took, and which strokes are still visible. The leading number on each timeline entry (e.g. "7. pen ...") is that stroke's sequence number — use it with circle_stroke to mark a specific student stroke.
 Treat the canvas as the primary teaching surface, not an optional add-on:
 - Any response that checks work, explains math, gives a correction, derives a formula, or references a visual location must include canvas writing/marking.
 - Do not merely say what you would write. Include drawing commands.
 - Do not give a multi-step spoken explanation while only writing the first half. Every equation, correction, or named mistake in the text response must appear as a visible annotation.
 - For multi-step work, use multiple write_formula commands in a compact vertical chain, about 58px apart. Keep each line short.
 - Before finishing, make sure the final answer, correction, or next step you mention is visibly written on the canvas.
-When checking work and you identify a mathematical, reasoning, or notation mistake, the first command must mark the mistake directly on the canvas:
-- Use circle_region centered on the mistaken handwritten step with color "#be123c".
-- Put a short visible note in the circle_region label, 2-4 words max, such as "sign error", "check divide", or "missing unit".
-- The label renders visibly next to the circle, so prefer the circle label over a separate write_label for low latency.
-- If the exact mistaken region is elongated, use red underline plus a short label instead.
-- Do not circle correct work. If the work is correct, write no red mistake circle.
-- Keep mistake-marking to one red circle/underline and at most one extra formula or arrow.
+Underline mistakes by default: whenever you notice a mathematical, reasoning, or notation error in the student's handwriting — even if they did not explicitly ask you to check the work — mark it directly on the canvas before anything else. Do not wait to be asked.
+When you identify such a mistake, the first command must underline it directly on the canvas:
+- Use the underline command in red ("#be123c") drawn directly beneath the mistaken work.
+- The underline MUST be strictly horizontal: "from" and "to" must have the SAME y value (from.y === to.y). Never produce a slanted or angled underline.
+- Do NOT attach any label or extra text to the underline. Leave the label empty — the red underline alone marks the error, with no words.
+- Do not underline correct work. If the work is correct, write no red underline.
+- Keep mistake-marking to one red underline and at most one extra formula or arrow.
 Make the text response explain the same marked mistake in one or two short sentences.
 Return JSON only with this shape:
 {"text":"spoken tutoring response","commands":[drawing commands]}
-Use up to ten useful new annotations when needed to finish the visible explanation. Valid commands are draw_arrow, circle_region, highlight_box, underline, write_label, write_formula, erase_ai_region, erase_ai_box, erase_ai_text_range, replace_ai_text, clear_ai_annotations.`;
+Use up to ten useful new annotations when needed to finish the visible explanation. Valid commands are draw_arrow, circle_stroke, circle_region, highlight_box, underline, write_label, write_formula, erase_ai_region, erase_ai_box, erase_ai_text_range, replace_ai_text, clear_ai_annotations.`;
 
 const fallbackCommands = [
   { type: "circle_region", x: 520, y: 520, radius: 90, color: "#be123c", label: "check step" }
@@ -346,19 +346,23 @@ export const getTutorResponse = async (request: TutorMessageRequest): Promise<Tu
     };
   }
 
+  let response: TutorResponse | null = null;
+
   try {
     if (selected.provider === "anthropic") {
-      return await callAnthropic(request, selected.model);
-    }
-
-    if (selected.provider === "openai") {
-      return await callOpenAi(request, selected.model);
+      response = await callAnthropic(request, selected.model);
+    } else if (selected.provider === "openai") {
+      response = await callOpenAi(request, selected.model);
     }
   } catch (error) {
     console.warn(error);
   }
 
-  return mockTutor(request, selected.model);
+  const result = response ?? mockTutor(request, selected.model);
+
+  // Resolve any circle_stroke references against the student stroke timeline so the model's
+  // sequence-number targeting becomes exact coordinates before the commands leave the server.
+  return { ...result, commands: resolveStrokeReferences(result.commands, request.strokeTimeline ?? []) };
 };
 
 export const voiceFallbackStatus = () => ({

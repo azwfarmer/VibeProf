@@ -1,5 +1,5 @@
 import { createId, now } from "../ids.js";
-import type { AiDrawingCommand, Stroke, StrokePoint } from "../types.js";
+import type { AiDrawingCommand, Stroke, StrokePoint, StrokeTimelineEntry } from "../types.js";
 
 const canvasWidth = 1600;
 const canvasHeight = 2200;
@@ -131,6 +131,10 @@ export const validateCommands = (commands: unknown): AiDrawingCommand[] => {
       return [{ type, x: clamp(Number(raw.x), 0, canvasWidth), y: clamp(Number(raw.y), 0, canvasHeight), radius: clamp(Number(raw.radius), 12, 420), color: color(raw.color), label: label(raw.label) }];
     }
 
+    if (type === "circle_stroke" && isNumber(raw.sequence)) {
+      return [{ type, sequence: Math.max(1, Math.round(Number(raw.sequence))), color: color(raw.color ?? "#be123c"), label: label(raw.label) }];
+    }
+
     if (type === "highlight_box" && isNumber(raw.x) && isNumber(raw.y) && isNumber(raw.width) && isNumber(raw.height)) {
       return [{ type, x: clamp(Number(raw.x), 0, canvasWidth), y: clamp(Number(raw.y), 0, canvasHeight), width: clamp(Number(raw.width), 12, canvasWidth), height: clamp(Number(raw.height), 12, canvasHeight), color: color(raw.color ?? "#fde047"), label: label(raw.label) }];
     }
@@ -138,10 +142,52 @@ export const validateCommands = (commands: unknown): AiDrawingCommand[] => {
     const from = raw.from as Record<string, unknown> | undefined;
     const to = raw.to as Record<string, unknown> | undefined;
     if ((type === "draw_arrow" || type === "underline") && from && to && isNumber(from.x) && isNumber(from.y) && isNumber(to.x) && isNumber(to.y)) {
-      return [{ type, from: { x: clamp(Number(from.x), 0, canvasWidth), y: clamp(Number(from.y), 0, canvasHeight) }, to: { x: clamp(Number(to.x), 0, canvasWidth), y: clamp(Number(to.y), 0, canvasHeight) }, color: color(raw.color), label: label(raw.label) }];
+      const fromY = clamp(Number(from.y), 0, canvasHeight);
+      // Underlines must be strictly horizontal: pin both endpoints to the same y and drop any label.
+      const toY = type === "underline" ? fromY : clamp(Number(to.y), 0, canvasHeight);
+      const lineLabel = type === "underline" ? "" : label(raw.label);
+      return [{ type, from: { x: clamp(Number(from.x), 0, canvasWidth), y: fromY }, to: { x: clamp(Number(to.x), 0, canvasWidth), y: toY }, color: color(raw.color), label: lineLabel }];
     }
 
     return [];
+  });
+};
+
+// Grounds circle_stroke commands to real coordinates: the model names the mistaken stroke by its
+// timeline sequence number, and we center a circle on that stroke's recorded bounds. This avoids
+// asking the vision model to eyeball pixel coordinates off a downscaled snapshot — the dominant
+// cause of circles landing in the wrong spot. Unknown sequence numbers (hallucinated by the model)
+// are dropped rather than guessed at.
+export const resolveStrokeReferences = (commands: AiDrawingCommand[], timeline: StrokeTimelineEntry[]): AiDrawingCommand[] => {
+  const bySequence = new Map(timeline.map((entry) => [entry.sequence, entry]));
+
+  return commands.flatMap((command): AiDrawingCommand[] => {
+    if (command.type !== "circle_stroke") {
+      return [command];
+    }
+
+    const entry = bySequence.get(command.sequence);
+    if (!entry) {
+      return [];
+    }
+
+    const { x, y, width, height } = entry.bounds;
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    // Half the bounding-box diagonal fully encloses the stroke; add padding so the ring sits just
+    // outside the ink rather than cutting through it.
+    const radius = clamp(Math.hypot(width, height) / 2 + 26, 12, 420);
+
+    return [
+      {
+        type: "circle_region",
+        x: clamp(centerX, 0, canvasWidth),
+        y: clamp(centerY, 0, canvasHeight),
+        radius,
+        color: color(command.color ?? "#be123c"),
+        label: command.label
+      }
+    ];
   });
 };
 
