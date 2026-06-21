@@ -57,8 +57,121 @@ We couldn't find a "vibecode"-style, real-time tutor that does what a good human
 - Letting the student erase tutor writing directly, and resetting tutor state on new pages/notebooks.
 
 
-## Local Usage
-cd apps/backend && ./scripts/make-certs.sh
+## Local Usage: iPad HTTPS Setup
 
-Navigate to https://[your ip]:8787 on iPad
+The iPad reaches the app over your local Wi‑Fi, and the mic + live voice tutor
+require HTTPS. This guide covers the full certificate process: finding your IP,
+generating certs, downloading the CA on the iPad, installing the profile, and
+enabling trust.
+
+> The iPad **must be on the same Wi‑Fi network** as the Mac running the backend.
+
+---
+
+### 1. Find your Mac's LAN IP
+
+```bash
+ipconfig getifaddr en0      # Wi-Fi
+ipconfig getifaddr en1      # wired/Thunderbolt ethernet, if used
+```
+
+Use whichever returns an address (e.g. `10.0.0.163`). This changes when you join
+a different network, so re-check it each time. Substitute it for `<your-ip>` below.
+
+### 2. Generate the certificates (Mac)
+
+Mints a local Certificate Authority (CA) plus a server cert whose SAN list covers
+`localhost`, loopback, and every auto-detected LAN IP.
+
+```bash
+cd apps/backend && ./scripts/make-certs.sh
+```
+
+If your IP isn't auto-detected, pass it (and any hostnames) explicitly:
+
+```bash
+./scripts/make-certs.sh <your-ip> my-mac.local
+```
+
+Writes to `apps/backend/data/certs/`:
+
+- `local-ca.cer` — **the CA you trust on the iPad** (the file the iPad downloads)
+- `server-cert.pem` / `server-key.pem` — what the backend serves HTTPS with
+
+The CA is **reused** across runs, so devices that already trust it stay trusted.
+Use `./scripts/make-certs.sh --new-ca` only to start fresh (every device must
+then re-trust).
+
+### 3. Start the backend (Mac)
+
+```bash
+npm run dev:backend
+```
+
+Two listeners come up:
+
+- `https://<your-ip>:8787` — the app (HTTPS, required for mic + WebRTC)
+- `http://<your-ip>:8788` — a plain‑HTTP helper page that serves the cert download
+
+HTTPS only activates when `HTTPS_CERT_PATH`, `HTTPS_KEY_PATH`, and
+`HTTPS_CA_CERT_PATH` are set in `.env` (they point at the files from step 2).
+
+### 4. Download the CA cert (iPad → Safari)
+
+Open **Safari** on the iPad (must be Safari — only it hands the profile to
+Settings) and go to the **helper port**:
+
+```
+http://<your-ip>:8788
+```
+
+Tap **"Download local CA certificate."** You can also hit the file directly —
+any of these work:
+
+```
+http://<your-ip>:8788/local-ca.cer
+http://<your-ip>:8788/local-ca.pem
+http://<your-ip>:8788/local-ca.crt
+```
+
+Tap **Allow** when iOS asks to download a configuration profile.
+
+### 5. Install the profile (iPad → Settings)
+
+1. Open **Settings** — a **"Profile Downloaded"** banner appears near the top.
+2. Tap it → **Install** (top right) → enter passcode → **Install** → **Install**.
+
+If the banner is gone: **Settings → General → VPN & Device Management**, find the
+profile there, and install it.
+
+### 6. Enable full trust (iPad — easy to miss)
+
+Installing the profile is **not enough**; iOS won't trust it for SSL until you
+flip the switch:
+
+**Settings → General → About → Certificate Trust Settings →** enable the toggle
+for **"AI Tutor Local CA."** Confirm on the warning dialog.
+
+### 7. Open the app
+
+In Safari on the iPad:
+
+```
+https://<your-ip>:8787
+```
+
+You should get a clean padlock (no warning), and the mic / live voice tutor will work.
+
+---
+
+### Notes & gotchas
+
+- **Trust the CA once per iPad.** Re-running `make-certs.sh` to add a new IP only
+  refreshes the *server* cert — restart the backend, but no iPad re-trust needed
+  (it trusts the CA, not the server cert).
+- **IP changed?** (new network, router reboot) Re-check step 1, re-run
+  `make-certs.sh <new-ip>` if it wasn't auto-detected, then restart the backend.
+- **Not Safari.** Chrome/Firefox on iOS won't install the profile — use Safari.
+- **Port reference:** app = `8787`, cert/setup helper = `8788`.
+
 
